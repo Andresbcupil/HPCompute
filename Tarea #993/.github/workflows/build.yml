@@ -1,0 +1,46 @@
+name: Build and Deploy Graph
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        ports:
+          - 9200:9200
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: false
+        options: >-
+          --health-cmd "curl http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Index Iris Dataset
+      run: |
+        python -c "import pandas as pd; from elasticsearch import Elasticsearch;         es = Elasticsearch('http://localhost:9200', verify_certs=False);         df = pd.read_csv('https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv');         [es.index(index='iris', id=i, document=row.to_dict()) for i, row in df.iterrows()]"
+
+    - name: Generate Chart
+      run: python script.py
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs
